@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Штамп мастер</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <div class="window">
+        <div class="titlebar">
+            <span class="titlebar-title">Штамп мастер</span>
+            <div class="window-controls">
+                <button class="btn-minimize">&#x2013;</button>
+                <button class="btn-maximize">&#x2610;</button>
+                <button class="btn-close">&#x2715;</button>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="sidebar">
+                <div class="sidebar-scroll">
+                    <div class="sidebar-section" id="favorites-section" style="display:none">
+                        <span class="sidebar-label">Избранное</span>
+                        <ul id="favorites-list"></ul>
+                    </div>
+                    <div class="sidebar-section">
+                        <span class="sidebar-label">Категории</span>
+                        <ul id="category-list">
+                            <li class="active" data-category="Общие">Общие</li>
+                            <li data-category="Объекты">Объекты</li>
+                            <li data-category="Подписи">Подписи</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="sidebar-bottom">
+                    <div class="sidebar-trash">
+                        <ul>
+                            <li id="trash-item" data-category="__trash__">Корзина</li>
+                        </ul>
+                    </div>
+                    <div class="sidebar-footer">
+                        <button class="icon-btn" id="btn-add-category">+</button>
+                        <button class="icon-btn" id="btn-remove-category">−</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="container">
+                <div class="toolbar" id="toolbar-normal">
+                    <button class="action-btn" id="btn-add-stamp">Добавить</button>
+                    <button class="action-btn" id="btn-delete-stamp" disabled>Удалить</button>
+                </div>
+                <div class="toolbar" id="toolbar-trash" style="display:none">
+                    <button class="action-btn primary" id="btn-restore-stamp" disabled>Восстановить</button>
+                    <button class="action-btn" id="btn-delete-forever" disabled>Удалить навсегда</button>
+                </div>
+                <div class="stamps-grid" id="stamps-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: перемещение в корзину -->
+    <div class="modal-overlay" id="modal-delete">
+        <div class="modal">
+            <h3>Переместить в корзину?</h3>
+            <p>Штамп можно будет восстановить из корзины.<br>Перемещение через <span id="delete-countdown">15</span> сек.</p>
+            <div class="modal-buttons">
+                <button class="action-btn danger" id="btn-delete-confirm">Переместить сейчас</button>
+                <button class="action-btn primary" id="btn-delete-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: удаление навсегда -->
+    <div class="modal-overlay" id="modal-delete-forever">
+        <div class="modal">
+            <h3>Удалить навсегда?</h3>
+            <p>Это действие нельзя отменить.<br>Удаление через <span id="forever-countdown">15</span> сек.</p>
+            <div class="modal-buttons">
+                <button class="action-btn danger" id="btn-forever-confirm">Удалить сейчас</button>
+                <button class="action-btn primary" id="btn-forever-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: добавление категории -->
+    <div class="modal-overlay" id="modal-add-category">
+        <div class="modal">
+            <h3>Новая категория</h3>
+            <input class="modal-input" id="input-category-name" type="text" placeholder="Название категории">
+            <div class="modal-buttons">
+                <button class="action-btn primary" id="btn-category-confirm">Добавить</button>
+                <button class="action-btn" id="btn-category-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: удаление категории -->
+    <div class="modal-overlay" id="modal-delete-category">
+        <div class="modal">
+            <h3>Удалить категорию?</h3>
+            <p>Будут удалены все штампы в категории «<span id="delete-category-name"></span>».<br>Это действие нельзя отменить.</p>
+            <div class="modal-buttons">
+                <button class="action-btn danger" id="btn-delete-category-confirm">Удалить</button>
+                <button class="action-btn" id="btn-delete-category-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: добавление штампа — выбор файла и кроп -->
+    <div class="modal-overlay" id="modal-add-stamp">
+        <div class="modal modal-wide">
+            <h3>Добавить штамп</h3>
+            <div class="crop-area" id="crop-area">
+                <span class="crop-placeholder">Выберите изображение</span>
+                <img id="crop-image" style="display:none">
+                <div class="crop-selection" id="crop-selection"></div>
+            </div>
+            <button class="action-btn" id="btn-pick-file">Выбрать файл</button>
+            <input type="file" id="file-input" accept="image/*" style="display:none">
+            <div class="stamp-details" id="stamp-details" style="display:none">
+                <div class="detail-row">
+                    <label>Название</label>
+                    <input class="modal-input" id="input-stamp-name" type="text" placeholder="Иванов И.И.">
+                </div>
+                <div class="detail-row">
+                    <label>Ширина (см)</label>
+                    <input class="modal-input small" id="input-stamp-w" type="number" min="0.1" step="0.1" value="5">
+                </div>
+                <div class="detail-row">
+                    <label>Высота (см)</label>
+                    <input class="modal-input small" id="input-stamp-h" type="number" min="0.1" step="0.1" value="2">
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="action-btn primary" id="btn-stamp-confirm" disabled>Добавить</button>
+                <button class="action-btn" id="btn-stamp-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="selection-box" id="selection-box"></div>
+
+    <!-- Контекстное меню -->
+    <div class="context-menu" id="context-menu">
+        <div class="context-item" id="ctx-favorite">Добавить в избранное</div>
+        <div class="context-separator"></div>
+        <div class="context-item danger" id="ctx-delete">Переместить в корзину</div>
+    </div>
+
+    <script src="main.js" defer></script>
+</body>
+</html>
