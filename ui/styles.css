@@ -48,7 +48,6 @@ body {
     background: #e8e8ed;
     border-bottom: 1px solid #d1d1d6;
     position: relative;
-    -webkit-app-region: drag;
 }
 
 .titlebar-title {
@@ -63,10 +62,9 @@ body {
 
 .window-controls {
     display: flex;
-    -webkit-app-region: no-drag;
 }
 
-.window-controls button {
+/* .window-controls button {
     all: unset;
     width: 46px;
     height: 38px;
@@ -86,7 +84,9 @@ body {
 .window-controls .btn-close:hover {
     background: #e81123;
     color: #fff;
-}
+} */
+
+
 
 /* Layout */
 .main {
@@ -479,14 +479,34 @@ body {
     position: relative;
     width: 100%;
     height: 240px;
-    background: #e0e0e5;
+    background: #1a1a1a;
     border-radius: 8px;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: crosshair;
+    cursor: default;
 }
+
+.crop-rotate-handle {
+    position: absolute;
+    top: -36px;
+    left: calc(50% - 12px);
+    width: 24px;
+    height: 24px;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: grab;
+    user-select: none;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.crop-rotate-handle:active { cursor: grabbing; }
 
 .crop-placeholder {
     font-size: 13px;
@@ -501,13 +521,31 @@ body {
     pointer-events: none;
 }
 
-.crop-selection {
+.crop-frame {
     position: absolute;
-    border: 2px solid #0071e3;
-    background: rgba(0, 113, 227, 0.1);
-    pointer-events: none;
-    display: none;
+    border: 2px solid white;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+    cursor: move;
+    box-sizing: border-box;
 }
+
+.crop-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.4);
+    box-sizing: border-box;
+}
+
+.crop-handle[data-h="tl"] { top:-5px; left:-5px; cursor:nw-resize; }
+.crop-handle[data-h="tm"] { top:-5px; left:calc(50% - 5px); cursor:n-resize; }
+.crop-handle[data-h="tr"] { top:-5px; right:-5px; cursor:ne-resize; }
+.crop-handle[data-h="ml"] { top:calc(50% - 5px); left:-5px; cursor:w-resize; }
+.crop-handle[data-h="mr"] { top:calc(50% - 5px); right:-5px; cursor:e-resize; }
+.crop-handle[data-h="bl"] { bottom:-5px; left:-5px; cursor:sw-resize; }
+.crop-handle[data-h="bm"] { bottom:-5px; left:calc(50% - 5px); cursor:s-resize; }
+.crop-handle[data-h="br"] { bottom:-5px; right:-5px; cursor:se-resize; }
 
 .stamp-details {
     display: flex;

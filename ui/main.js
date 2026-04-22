@@ -1,17 +1,27 @@
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
-function openModal(id)  { document.getElementById(id).classList.add('visible'); }
+function openModal(id) { document.getElementById(id).classList.add('visible'); }
 function closeModal(id) { document.getElementById(id).classList.remove('visible'); }
+
+function stampDisplayName(filename) {
+    return filename.replace(/\.[^.]+$/, '').replace(/_[\d.]+x[\d.]+$/, '');
+}
+
+function stampSrc(stamp) {
+    const ext = stamp.name.split('.').pop().toLowerCase();
+    const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'image/png';
+    return `data:${mime};base64,${stamp.image}`;
+}
 
 // ─── Категории ──────────────────────────────────────────────────────────────
 
-const categoryList     = document.getElementById('category-list');
-const trashItem        = document.getElementById('trash-item');
-const favoritesList    = document.getElementById('favorites-list');
+const categoryList = document.getElementById('category-list');
+const trashItem = document.getElementById('trash-item');
+const favoritesList = document.getElementById('favorites-list');
 const favoritesSection = document.getElementById('favorites-section');
-const contextMenu      = document.getElementById('context-menu');
-const favorites        = new Set(); // хранит имена избранных штампов
-let contextTarget      = null;      // карточка над которой открыто меню
+const contextMenu = document.getElementById('context-menu');
+const favorites = new Set(); // хранит имена избранных штампов
+let contextTarget = null;      // карточка над которой открыто меню
 
 function getActiveCategory() {
     const active = categoryList.querySelector('li.active');
@@ -60,7 +70,9 @@ document.getElementById('btn-add-category').addEventListener('click', () => {
 document.getElementById('btn-category-confirm').addEventListener('click', () => {
     const name = document.getElementById('input-category-name').value.trim();
     if (!name) return;
-    addCategoryItem(name);
+    window.pywebview.api.add_category(name).then(() => {
+        addCategoryItem(name);
+    });
     closeModal('modal-add-category');
 });
 
@@ -84,9 +96,12 @@ document.getElementById('btn-remove-category').addEventListener('click', () => {
 document.getElementById('btn-delete-category-confirm').addEventListener('click', () => {
     const active = categoryList.querySelector('li.active');
     if (!active) return;
+    const name = active.dataset.category;
     const prev = active.previousElementSibling || active.nextElementSibling;
-    active.remove();
-    if (prev) setActiveCategory(prev);
+    window.pywebview.api.delete_category(name).then(() => {
+        active.remove();
+        if (prev) { setActiveCategory(prev); setTrashView(false); }
+    });
     closeModal('modal-delete-category');
 });
 
@@ -96,15 +111,15 @@ document.getElementById('btn-delete-category-cancel').addEventListener('click', 
 
 // ─── Штампы ─────────────────────────────────────────────────────────────────
 
-const grid        = document.getElementById('stamps-grid');
-const deleteBtn   = document.getElementById('btn-delete-stamp');
-const restoreBtn  = document.getElementById('btn-restore-stamp');
-const foreverBtn  = document.getElementById('btn-delete-forever');
+const grid = document.getElementById('stamps-grid');
+const deleteBtn = document.getElementById('btn-delete-stamp');
+const restoreBtn = document.getElementById('btn-restore-stamp');
+const foreverBtn = document.getElementById('btn-delete-forever');
 const toolbarNormal = document.getElementById('toolbar-normal');
-const toolbarTrash  = document.getElementById('toolbar-trash');
+const toolbarTrash = document.getElementById('toolbar-trash');
 let lastSelected = null;
 let isTrashView = false;
-const trashStore = []; // { name, imageSrc }
+const trashStore = []; // { displayName, imageSrc, filename, category }
 
 function getCards() {
     return Array.from(grid.querySelectorAll('.stamp-card'));
@@ -123,14 +138,16 @@ function updateDeleteBtn() {
 function setTrashView(isTrash) {
     isTrashView = isTrash;
     toolbarNormal.style.display = isTrash ? 'none' : 'flex';
-    toolbarTrash.style.display  = isTrash ? 'flex' : 'none';
+    toolbarTrash.style.display = isTrash ? 'flex' : 'none';
     clearSelection();
     grid.innerHTML = '';
     if (isTrash) {
-        trashStore.forEach(item => createCard(item.name, item.imageSrc));
+        trashStore.forEach(item => createCard(item.displayName, item.imageSrc, item.filename, item.category));
     } else {
-        ['Иванов И.И.', 'Петров П.П.', 'Сидоров С.С.', 'Кузнецов К.К.',
-         'Новиков Н.Н.', 'Морозов М.М.', 'Волков В.В.', 'Алексеев А.А.'].forEach(name => createCard(name));
+        const category = getActiveCategory();
+        window.pywebview.api.get_stamps(category).then(stamps => {
+            stamps.forEach(stamp => createCard(stampDisplayName(stamp.name), stampSrc(stamp), stamp.name, category));
+        });
     }
 }
 
@@ -140,12 +157,14 @@ function clearSelection() {
     updateDeleteBtn();
 }
 
-function createCard(name, imageSrc) {
+function createCard(displayName, imageSrc, filename, category) {
     const card = document.createElement('div');
     card.className = 'stamp-card';
+    card.dataset.filename = filename || '';
+    card.dataset.category = category || '';
     card.innerHTML = `
         <div class="stamp-preview">${imageSrc ? `<img src="${imageSrc}" style="width:100%;height:100%;object-fit:contain;border-radius:6px">` : ''}</div>
-        <span class="stamp-name">${name}</span>
+        <span class="stamp-name">${displayName}</span>
     `;
 
     card.addEventListener('click', (e) => {
@@ -172,10 +191,6 @@ function createCard(name, imageSrc) {
     grid.appendChild(card);
     return card;
 }
-
-// Начальная загрузка
-['Иванов И.И.', 'Петров П.П.', 'Сидоров С.С.', 'Кузнецов К.К.',
- 'Новиков Н.Н.', 'Морозов М.М.', 'Волков В.В.', 'Алексеев А.А.'].forEach(name => createCard(name));
 
 // Клик в пустое место (не на карточку, не на тулбар)
 document.querySelector('.container').addEventListener('click', (e) => {
@@ -242,7 +257,12 @@ deleteBtn.addEventListener('click', () => {
 function confirmDelete() {
     clearInterval(deleteInterval);
     grid.querySelectorAll('.stamp-card.active').forEach(c => {
-        trashStore.push({ name: c.querySelector('.stamp-name').textContent, imageSrc: null });
+        const filename = c.dataset.filename;
+        const category = c.dataset.category;
+        const displayName = c.querySelector('.stamp-name').textContent;
+        const img = c.querySelector('.stamp-preview img');
+        window.pywebview.api.delete_stamp(category, filename);
+        trashStore.push({ displayName, imageSrc: img ? img.src : null, filename, category });
         c.remove();
     });
     lastSelected = null;
@@ -253,8 +273,10 @@ function confirmDelete() {
 // Восстановить из корзины
 restoreBtn.addEventListener('click', () => {
     grid.querySelectorAll('.stamp-card.active').forEach(c => {
-        const name = c.querySelector('.stamp-name').textContent;
-        const idx = trashStore.findIndex(i => i.name === name);
+        const filename = c.dataset.filename;
+        const category = c.dataset.category;
+        window.pywebview.api.restore_stamp(category, filename);
+        const idx = trashStore.findIndex(i => i.filename === filename && i.category === category);
         if (idx !== -1) trashStore.splice(idx, 1);
         c.remove();
     });
@@ -279,8 +301,10 @@ foreverBtn.addEventListener('click', () => {
 function confirmForever() {
     clearInterval(foreverInterval);
     grid.querySelectorAll('.stamp-card.active').forEach(c => {
-        const name = c.querySelector('.stamp-name').textContent;
-        const idx = trashStore.findIndex(i => i.name === name);
+        const filename = c.dataset.filename;
+        const category = c.dataset.category;
+        window.pywebview.api.delete_stamp_from_trash(category, filename);
+        const idx = trashStore.findIndex(i => i.filename === filename && i.category === category);
         if (idx !== -1) trashStore.splice(idx, 1);
         c.remove();
     });
@@ -304,22 +328,47 @@ document.getElementById('btn-delete-cancel').addEventListener('click', () => {
 
 // ─── Добавление штампа ──────────────────────────────────────────────────────
 
-const fileInput   = document.getElementById('file-input');
-const cropImage   = document.getElementById('crop-image');
-const cropArea    = document.getElementById('crop-area');
-const cropSel     = document.getElementById('crop-selection');
-const stampDetails = document.getElementById('stamp-details');
+const fileInput       = document.getElementById('file-input');
+const cropImage       = document.getElementById('crop-image');
+const cropArea        = document.getElementById('crop-area');
+const cropFrame       = document.getElementById('crop-frame');
+const stampDetails    = document.getElementById('stamp-details');
 const confirmStampBtn = document.getElementById('btn-stamp-confirm');
 
-let cropStart = null;
-let cropRect  = null;
+let cropRect   = { x: 0, y: 0, w: 0, h: 0 };
+let dragState  = null;
+let rotAngle   = 0;
+let rotDragStart = null; // { startAngle, initRot }
+
+const MIN_SIZE = 20;
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function applyCropRect() {
+    cropFrame.style.left   = cropRect.x + 'px';
+    cropFrame.style.top    = cropRect.y + 'px';
+    cropFrame.style.width  = cropRect.w + 'px';
+    cropFrame.style.height = cropRect.h + 'px';
+}
+
+function initCropFrame() {
+    const aW = cropArea.offsetWidth;
+    const aH = cropArea.offsetHeight;
+    const pad = 24;
+    cropRect = { x: pad, y: pad, w: aW - pad * 2, h: aH - pad * 2 };
+    applyCropRect();
+    cropFrame.style.display = 'block';
+    stampDetails.style.display = 'flex';
+    confirmStampBtn.disabled = false;
+}
 
 document.getElementById('btn-add-stamp').addEventListener('click', () => {
     cropImage.style.display = 'none';
-    cropSel.style.display   = 'none';
+    cropImage.style.transform = '';
+    cropFrame.style.display = 'none';
     stampDetails.style.display = 'none';
-    confirmStampBtn.disabled   = true;
-    cropRect = null;
+    confirmStampBtn.disabled = true;
+    rotAngle = 0;
     openModal('modal-add-stamp');
 });
 
@@ -328,64 +377,129 @@ document.getElementById('btn-pick-file').addEventListener('click', () => fileInp
 fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    cropImage.src = url;
+    cropImage.src = URL.createObjectURL(file);
     cropImage.style.display = 'block';
     document.querySelector('.crop-placeholder').style.display = 'none';
-    cropSel.style.display = 'none';
-    cropRect = null;
     fileInput.value = '';
+    rotAngle = 0;
+    cropImage.style.transform = '';
+    cropImage.onload = () => initCropFrame();
 });
 
-// Кроп мышкой
-cropArea.addEventListener('mousedown', (e) => {
-    if (!cropImage.src || cropImage.style.display === 'none') return;
+// Mousedown — определяем что тащим
+cropFrame.addEventListener('mousedown', (e) => {
     e.preventDefault();
-    const r = cropArea.getBoundingClientRect();
-    cropStart = { x: e.clientX - r.left, y: e.clientY - r.top };
-    cropSel.style.display = 'block';
+    e.stopPropagation();
+    if (e.target.id === 'crop-rotate-handle') {
+        const areaRect = cropArea.getBoundingClientRect();
+        const cx = areaRect.left + cropRect.x + cropRect.w / 2;
+        const cy = areaRect.top  + cropRect.y + cropRect.h / 2;
+        rotDragStart = {
+            startAngle: Math.atan2(e.clientY - cy, e.clientX - cx),
+            initRot: rotAngle
+        };
+        return;
+    }
+    const handle = e.target.dataset.h;
+    dragState = {
+        type: handle || 'move',
+        startX: e.clientX,
+        startY: e.clientY,
+        orig: { ...cropRect }
+    };
 });
 
 document.addEventListener('mousemove', (e) => {
-    if (!cropStart) return;
-    const r = cropArea.getBoundingClientRect();
-    const x = Math.max(0, Math.min(e.clientX - r.left, r.width));
-    const y = Math.max(0, Math.min(e.clientY - r.top, r.height));
-    const left   = Math.min(x, cropStart.x);
-    const top    = Math.min(y, cropStart.y);
-    const width  = Math.abs(x - cropStart.x);
-    const height = Math.abs(y - cropStart.y);
-    cropSel.style.left   = left + 'px';
-    cropSel.style.top    = top  + 'px';
-    cropSel.style.width  = width  + 'px';
-    cropSel.style.height = height + 'px';
-    cropRect = { left, top, width, height };
+    if (rotDragStart) {
+        const areaRect = cropArea.getBoundingClientRect();
+        const cx = areaRect.left + cropRect.x + cropRect.w / 2;
+        const cy = areaRect.top  + cropRect.y + cropRect.h / 2;
+        const angle = Math.atan2(e.clientY - cy, e.clientX - cx);
+        rotAngle = rotDragStart.initRot + (angle - rotDragStart.startAngle) * 180 / Math.PI;
+        cropImage.style.transform = `rotate(${rotAngle}deg)`;
+        return;
+    }
+    if (!dragState) return;
+    const aW = cropArea.offsetWidth;
+    const aH = cropArea.offsetHeight;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    const o  = dragState.orig;
+    let { x, y, w, h } = o;
+
+    if (dragState.type === 'move') {
+        x = clamp(o.x + dx, 0, aW - w);
+        y = clamp(o.y + dy, 0, aH - h);
+    } else {
+        const t = dragState.type;
+        if (t.includes('r')) { w = clamp(o.w + dx, MIN_SIZE, aW - o.x); }
+        if (t.includes('l')) { const nw = clamp(o.w - dx, MIN_SIZE, o.x + o.w); x = o.x + o.w - nw; w = nw; }
+        if (t.includes('b')) { h = clamp(o.h + dy, MIN_SIZE, aH - o.y); }
+        if (t.includes('t')) { const nh = clamp(o.h - dy, MIN_SIZE, o.y + o.h); y = o.y + o.h - nh; h = nh; }
+    }
+
+    cropRect = { x, y, w, h };
+    applyCropRect();
 });
 
-document.addEventListener('mouseup', (e) => {
-    if (!cropStart) return;
-    cropStart = null;
-    if (cropRect && cropRect.width > 5 && cropRect.height > 5) {
-        stampDetails.style.display = 'flex';
-        confirmStampBtn.disabled = false;
-    }
+document.addEventListener('mouseup', () => {
+    dragState = null;
+    rotDragStart = null;
 });
 
 document.getElementById('btn-stamp-confirm').addEventListener('click', () => {
-    const name = document.getElementById('input-stamp-name').value.trim() || 'Без названия';
-    createCard(name, null);
+    const name     = document.getElementById('input-stamp-name').value.trim() || 'Без названия';
+    const width    = document.getElementById('input-stamp-w').value;
+    const height   = document.getElementById('input-stamp-h').value;
+    const category = getActiveCategory();
+
+    const imgRect  = cropImage.getBoundingClientRect();
+    const areaRect = cropArea.getBoundingClientRect();
+    const offX = imgRect.left - areaRect.left;
+    const offY = imgRect.top  - areaRect.top;
+    const imgW = cropImage.offsetWidth;
+    const imgH = cropImage.offsetHeight;
+    const imgCX = offX + imgW / 2;
+    const imgCY = offY + imgH / 2;
+
+    const aW = cropArea.offsetWidth;
+    const aH = cropArea.offsetHeight;
+    const scaleX = cropImage.naturalWidth  / imgW;
+    const scaleY = cropImage.naturalHeight / imgH;
+
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width  = aW;
+    tempCanvas.height = aH;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.save();
+    tempCtx.translate(imgCX, imgCY);
+    tempCtx.rotate(rotAngle * Math.PI / 180);
+    tempCtx.drawImage(cropImage, -imgW / 2, -imgH / 2, imgW, imgH);
+    tempCtx.restore();
+
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width  = cropRect.w * scaleX;
+    finalCanvas.height = cropRect.h * scaleY;
+    finalCanvas.getContext('2d').drawImage(
+        tempCanvas,
+        cropRect.x, cropRect.y, cropRect.w, cropRect.h,
+        0, 0, finalCanvas.width, finalCanvas.height
+    );
+    const canvas = finalCanvas;
+    const imageData = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+    window.pywebview.api.add_stamp(category, name, width, height, imageData).then(() => setTrashView(false));
     closeModal('modal-add-stamp');
 });
 
 document.getElementById('btn-stamp-cancel').addEventListener('click', () => {
     closeModal('modal-add-stamp');
-    cropStart = null;
+    dragState = null;
 });
 
 // ─── Rubber band selection ───────────────────────────────────────────────────
 
 const selectionBox = document.getElementById('selection-box');
-let isDragging  = false;
+let isDragging = false;
 let wasDragging = false;
 let startX, startY;
 
@@ -396,9 +510,9 @@ document.querySelector('.container').addEventListener('mousedown', (e) => {
     wasDragging = false;
     startX = e.clientX;
     startY = e.clientY;
-    selectionBox.style.left   = startX + 'px';
-    selectionBox.style.top    = startY + 'px';
-    selectionBox.style.width  = '0';
+    selectionBox.style.left = startX + 'px';
+    selectionBox.style.top = startY + 'px';
+    selectionBox.style.width = '0';
     selectionBox.style.height = '0';
     selectionBox.style.display = 'block';
     if (!e.ctrlKey && !e.metaKey) clearSelection();
@@ -411,16 +525,16 @@ document.addEventListener('mousemove', (e) => {
     const y = Math.min(e.clientY, startY);
     const w = Math.abs(e.clientX - startX);
     const h = Math.abs(e.clientY - startY);
-    selectionBox.style.left   = x + 'px';
-    selectionBox.style.top    = y + 'px';
-    selectionBox.style.width  = w + 'px';
+    selectionBox.style.left = x + 'px';
+    selectionBox.style.top = y + 'px';
+    selectionBox.style.width = w + 'px';
     selectionBox.style.height = h + 'px';
 
     const boxRect = { left: x, top: y, right: x + w, bottom: y + h };
     getCards().forEach(card => {
         const cr = card.getBoundingClientRect();
         const intersects = !(boxRect.right < cr.left || boxRect.left > cr.right ||
-                              boxRect.bottom < cr.top || boxRect.top > cr.bottom);
+            boxRect.bottom < cr.top || boxRect.top > cr.bottom);
         card.classList.toggle('active', intersects);
     });
     updateDeleteBtn();
@@ -472,7 +586,7 @@ function showContextMenu(e, card) {
     document.getElementById('ctx-favorite').textContent =
         favorites.has(name) ? 'Убрать из избранного' : 'Добавить в избранное';
     contextMenu.style.left = e.clientX + 'px';
-    contextMenu.style.top  = e.clientY + 'px';
+    contextMenu.style.top = e.clientY + 'px';
     contextMenu.classList.add('visible');
 }
 
@@ -510,17 +624,11 @@ document.addEventListener('contextmenu', (e) => {
     }
 });
 
-// ─── Кнопки окна ────────────────────────────────────────────────────────────
 
-document.querySelector('.btn-close').addEventListener('click', () => {
-    if (window.pywebview) window.pywebview.api.close_window();
-    else window.close();
-});
-
-document.querySelector('.btn-minimize').addEventListener('click', () => {
-    if (window.pywebview) window.pywebview.api.minimize_window();
-});
-
-document.querySelector('.btn-maximize').addEventListener('click', () => {
-    if (window.pywebview) window.pywebview.api.toggle_maximize();
+window.addEventListener('pywebviewready', function() {
+    window.pywebview.api.get_categories().then(categories => {
+        categoryList.innerHTML = '';
+        categories.forEach(name => addCategoryItem(name));
+        if (categories.length > 0) setTrashView(false);
+    });
 });

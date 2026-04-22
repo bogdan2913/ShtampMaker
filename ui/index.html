@@ -1,22 +1,15 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <title>Штамп мастер</title>
     <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
     <div class="window">
-        <div class="titlebar">
-            <span class="titlebar-title">Штамп мастер</span>
-            <div class="window-controls">
-                <button class="btn-minimize">&#x2013;</button>
-                <button class="btn-maximize">&#x2610;</button>
-                <button class="btn-close">&#x2715;</button>
-            </div>
-        </div>
-
         <div class="main">
             <div class="sidebar">
                 <div class="sidebar-scroll">
@@ -26,11 +19,7 @@
                     </div>
                     <div class="sidebar-section">
                         <span class="sidebar-label">Категории</span>
-                        <ul id="category-list">
-                            <li class="active" data-category="Общие">Общие</li>
-                            <li data-category="Объекты">Объекты</li>
-                            <li data-category="Подписи">Подписи</li>
-                        </ul>
+                        <ul id="category-list"></ul>
                     </div>
                 </div>
                 <div class="sidebar-bottom">
@@ -64,7 +53,8 @@
     <div class="modal-overlay" id="modal-delete">
         <div class="modal">
             <h3>Переместить в корзину?</h3>
-            <p>Штамп можно будет восстановить из корзины.<br>Перемещение через <span id="delete-countdown">15</span> сек.</p>
+            <p>Штамп можно будет восстановить из корзины.<br>Перемещение через <span id="delete-countdown">15</span>
+                сек.</p>
             <div class="modal-buttons">
                 <button class="action-btn danger" id="btn-delete-confirm">Переместить сейчас</button>
                 <button class="action-btn primary" id="btn-delete-cancel">Отмена</button>
@@ -100,7 +90,8 @@
     <div class="modal-overlay" id="modal-delete-category">
         <div class="modal">
             <h3>Удалить категорию?</h3>
-            <p>Будут удалены все штампы в категории «<span id="delete-category-name"></span>».<br>Это действие нельзя отменить.</p>
+            <p>Будут удалены все штампы в категории «<span id="delete-category-name"></span>».<br>Это действие нельзя
+                отменить.</p>
             <div class="modal-buttons">
                 <button class="action-btn danger" id="btn-delete-category-confirm">Удалить</button>
                 <button class="action-btn" id="btn-delete-category-cancel">Отмена</button>
@@ -115,7 +106,17 @@
             <div class="crop-area" id="crop-area">
                 <span class="crop-placeholder">Выберите изображение</span>
                 <img id="crop-image" style="display:none">
-                <div class="crop-selection" id="crop-selection"></div>
+                <div class="crop-frame" id="crop-frame" style="display:none">
+                    <div class="crop-handle" data-h="tl"></div>
+                    <div class="crop-handle" data-h="tm"></div>
+                    <div class="crop-handle" data-h="tr"></div>
+                    <div class="crop-handle" data-h="ml"></div>
+                    <div class="crop-handle" data-h="mr"></div>
+                    <div class="crop-handle" data-h="bl"></div>
+                    <div class="crop-handle" data-h="bm"></div>
+                    <div class="crop-handle" data-h="br"></div>
+                    <div class="crop-rotate-handle" id="crop-rotate-handle">↻</div>
+                </div>
             </div>
             <button class="action-btn" id="btn-pick-file">Выбрать файл</button>
             <input type="file" id="file-input" accept="image/*" style="display:none">
@@ -151,4 +152,5 @@
 
     <script src="main.js" defer></script>
 </body>
+
 </html>
