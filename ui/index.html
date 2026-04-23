@@ -43,6 +43,12 @@
                 <div class="toolbar" id="toolbar-trash" style="display:none">
                     <button class="action-btn primary" id="btn-restore-stamp" disabled>Восстановить</button>
                     <button class="action-btn" id="btn-delete-forever" disabled>Удалить навсегда</button>
+                    <button class="action-btn danger" id="btn-empty-trash">Очистить корзину</button>
+                </div>
+                <div class="trash-breadcrumb" id="trash-breadcrumb" style="display:none">
+                    <span id="breadcrumb-back">← Корзина</span>
+                    <span>/</span>
+                    <span id="breadcrumb-category"></span>
                 </div>
                 <div class="stamps-grid" id="stamps-grid"></div>
             </div>
@@ -58,6 +64,18 @@
             <div class="modal-buttons">
                 <button class="action-btn danger" id="btn-delete-confirm">Переместить сейчас</button>
                 <button class="action-btn primary" id="btn-delete-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: очистка корзины -->
+    <div class="modal-overlay" id="modal-empty-trash">
+        <div class="modal">
+            <h3>Очистить корзину?</h3>
+            <p>Все файлы будут удалены навсегда. Это действие нельзя отменить.</p>
+            <div class="modal-buttons">
+                <button class="action-btn danger" id="btn-empty-trash-confirm">Очистить</button>
+                <button class="action-btn primary" id="btn-empty-trash-cancel">Отмена</button>
             </div>
         </div>
     </div>
@@ -143,11 +161,42 @@
 
     <div class="selection-box" id="selection-box"></div>
 
-    <!-- Контекстное меню -->
+    <!-- Контекстное меню штампа -->
     <div class="context-menu" id="context-menu">
-        <div class="context-item" id="ctx-favorite">Добавить в избранное</div>
+        <div class="context-item" id="ctx-rename">Переименовать</div>
         <div class="context-separator"></div>
         <div class="context-item danger" id="ctx-delete">Переместить в корзину</div>
+    </div>
+
+    <!-- Контекстное меню категории -->
+    <div class="context-menu" id="category-context-menu">
+        <div class="context-item" id="cat-ctx-rename">Переименовать</div>
+        <div class="context-separator"></div>
+        <div class="context-item danger" id="cat-ctx-delete">Переместить в корзину</div>
+    </div>
+
+    <!-- Модалка: переименование штампа -->
+    <div class="modal-overlay" id="modal-rename-stamp">
+        <div class="modal">
+            <h3>Переименовать штамп</h3>
+            <input class="modal-input" id="input-rename-stamp" type="text" placeholder="Новое название">
+            <div class="modal-buttons">
+                <button class="action-btn primary" id="btn-rename-stamp-confirm">Переименовать</button>
+                <button class="action-btn" id="btn-rename-stamp-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка: переименование категории -->
+    <div class="modal-overlay" id="modal-rename-category">
+        <div class="modal">
+            <h3>Переименовать категорию</h3>
+            <input class="modal-input" id="input-rename-category" type="text" placeholder="Новое название">
+            <div class="modal-buttons">
+                <button class="action-btn primary" id="btn-rename-category-confirm">Переименовать</button>
+                <button class="action-btn" id="btn-rename-category-cancel">Отмена</button>
+            </div>
+        </div>
     </div>
 
     <script src="main.js" defer></script>

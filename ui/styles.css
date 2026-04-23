@@ -37,56 +37,6 @@ body {
     background: #f5f5f7;
 }
 
-/* Title bar */
-.titlebar {
-    height: 38px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0;
-    background: #e8e8ed;
-    border-bottom: 1px solid #d1d1d6;
-    position: relative;
-}
-
-.titlebar-title {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 13px;
-    font-weight: 500;
-    color: #3a3a3c;
-    pointer-events: none;
-}
-
-.window-controls {
-    display: flex;
-}
-
-/* .window-controls button {
-    all: unset;
-    width: 46px;
-    height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    color: #3a3a3c;
-    cursor: pointer;
-    transition: background 0.12s;
-}
-
-.window-controls button:hover {
-    background: rgba(0, 0, 0, 0.08);
-}
-
-.window-controls .btn-close:hover {
-    background: #e81123;
-    color: #fff;
-} */
-
-
 
 /* Layout */
 .main {
@@ -218,7 +168,7 @@ body {
 
 .sidebar-trash {
     border-top: 1px solid #d1d1d6;
-    padding: 6px 6px 0;
+    padding: 6px;
     background: #ececf0;
 }
 
@@ -282,6 +232,7 @@ body {
 }
 
 .stamp-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -290,6 +241,36 @@ body {
     border-radius: 10px;
     cursor: pointer;
     transition: background 0.12s;
+}
+
+.stamp-star {
+    position: absolute;
+    top: 6px;
+    right: 7px;
+    font-size: 13px;
+    line-height: 1;
+    color: #f0a500;
+    opacity: 0;
+    transition: opacity 0.12s, transform 0.12s;
+    z-index: 1;
+}
+
+.stamp-card:hover .stamp-star {
+    opacity: 0.35;
+}
+
+.stamp-star.active {
+    opacity: 1 !important;
+}
+
+@keyframes star-limit {
+    0%   { transform: scale(1); color: #f0a500; }
+    40%  { transform: scale(1.5); color: #e81123; }
+    100% { transform: scale(1); color: #f0a500; }
+}
+
+.stamp-star.limit {
+    animation: star-limit 0.35s ease;
 }
 
 .stamp-card:hover {
@@ -353,8 +334,27 @@ body {
     cursor: default;
 }
 
-#btn-delete-stamp:not(:disabled) {
+#btn-delete-stamp:not(:disabled),
+#btn-delete-forever:not(:disabled) {
     color: #e81123;
+}
+
+.trash-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #6e6e73;
+    margin-top: -6px;
+}
+
+#breadcrumb-back {
+    color: #0071e3;
+    cursor: pointer;
+}
+
+#breadcrumb-back:hover {
+    text-decoration: underline;
 }
 
 .action-btn:disabled:hover {

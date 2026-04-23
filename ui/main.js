@@ -20,8 +20,13 @@ const trashItem = document.getElementById('trash-item');
 const favoritesList = document.getElementById('favorites-list');
 const favoritesSection = document.getElementById('favorites-section');
 const contextMenu = document.getElementById('context-menu');
-const favorites = new Set(); // хранит имена избранных штампов
-let contextTarget = null;      // карточка над которой открыто меню
+const categoryContextMenu = document.getElementById('category-context-menu');
+const FAVORITES_KEY = 'stamps_favorites';
+let favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+// Миграция: старый формат — массив строк, новый — массив объектов {category, filename}
+if (favorites.length > 0 && typeof favorites[0] === 'string') favorites = [];
+let contextTarget = null;
+let catContextTarget = null;
 
 function getActiveCategory() {
     const active = categoryList.querySelector('li.active');
@@ -41,6 +46,15 @@ function addCategoryItem(name) {
         trashItem.classList.remove('active');
         setActiveCategory(li);
         setTrashView(false);
+    });
+    li.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hideContextMenu();
+        catContextTarget = li;
+        categoryContextMenu.style.left = e.clientX + 'px';
+        categoryContextMenu.style.top = e.clientY + 'px';
+        categoryContextMenu.classList.add('visible');
     });
     categoryList.appendChild(li);
     setActiveCategory(li);
@@ -100,6 +114,9 @@ document.getElementById('btn-delete-category-confirm').addEventListener('click',
     const prev = active.previousElementSibling || active.nextElementSibling;
     window.pywebview.api.delete_category(name).then(() => {
         active.remove();
+        const before = favorites.length;
+        favorites = favorites.filter(f => f.category !== name);
+        if (favorites.length !== before) { saveFavorites(); updateFavoritesList(); }
         if (prev) { setActiveCategory(prev); setTrashView(false); }
     });
     closeModal('modal-delete-category');
@@ -119,7 +136,7 @@ const toolbarNormal = document.getElementById('toolbar-normal');
 const toolbarTrash = document.getElementById('toolbar-trash');
 let lastSelected = null;
 let isTrashView = false;
-const trashStore = []; // { displayName, imageSrc, filename, category }
+let trashCategory = null;
 
 function getCards() {
     return Array.from(grid.querySelectorAll('.stamp-card'));
@@ -135,18 +152,38 @@ function updateDeleteBtn() {
     }
 }
 
-function setTrashView(isTrash) {
+function setTrashView(isTrash, subCategory = null) {
     isTrashView = isTrash;
+    trashCategory = isTrash ? subCategory : null;
     toolbarNormal.style.display = isTrash ? 'none' : 'flex';
     toolbarTrash.style.display = isTrash ? 'flex' : 'none';
-    clearSelection();
-    grid.innerHTML = '';
-    if (isTrash) {
-        trashStore.forEach(item => createCard(item.displayName, item.imageSrc, item.filename, item.category));
+
+    const breadcrumb = document.getElementById('trash-breadcrumb');
+    if (isTrash && subCategory) {
+        breadcrumb.style.display = 'flex';
+        document.getElementById('breadcrumb-category').textContent = subCategory;
     } else {
+        breadcrumb.style.display = 'none';
+    }
+
+    clearSelection();
+    grid.innerHTML = '<div style="grid-column:1/-1;color:#8e8e93;font-size:13px;padding:8px 0">Загрузка…</div>';
+
+    if (!isTrash) {
         const category = getActiveCategory();
         window.pywebview.api.get_stamps(category).then(stamps => {
+            grid.innerHTML = '';
             stamps.forEach(stamp => createCard(stampDisplayName(stamp.name), stampSrc(stamp), stamp.name, category));
+        });
+    } else if (subCategory) {
+        window.pywebview.api.get_stamps_from_trash(subCategory).then(stamps => {
+            grid.innerHTML = '';
+            stamps.forEach(stamp => createCard(stampDisplayName(stamp.name), stampSrc(stamp), stamp.name, subCategory));
+        });
+    } else {
+        window.pywebview.api.get_categories_from_trash().then(categories => {
+            grid.innerHTML = '';
+            categories.forEach(cat => createCard(cat, null, cat, null, true));
         });
     }
 }
@@ -157,15 +194,38 @@ function clearSelection() {
     updateDeleteBtn();
 }
 
-function createCard(displayName, imageSrc, filename, category) {
+function createCard(displayName, imageSrc, filename, category, isFolder = false) {
     const card = document.createElement('div');
     card.className = 'stamp-card';
     card.dataset.filename = filename || '';
     card.dataset.category = category || '';
+    card.dataset.isFolder = isFolder ? 'true' : 'false';
+    const preview = isFolder
+        ? `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px">📁</div>`
+        : (imageSrc ? `<img src="${imageSrc}" style="width:100%;height:100%;object-fit:contain;border-radius:6px">` : '');
+    const starHtml = isFolder ? '' : `<span class="stamp-star${isFavorite(category, filename) ? ' active' : ''}">★</span>`;
     card.innerHTML = `
-        <div class="stamp-preview">${imageSrc ? `<img src="${imageSrc}" style="width:100%;height:100%;object-fit:contain;border-radius:6px">` : ''}</div>
+        ${starHtml}
+        <div class="stamp-preview">${preview}</div>
         <span class="stamp-name">${displayName}</span>
     `;
+    if (!isFolder) {
+        card.querySelector('.stamp-star').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const star = e.currentTarget;
+            const added = toggleFavorite(card.dataset.category, card.dataset.filename);
+            if (added === false) {
+                star.classList.add('limit');
+                setTimeout(() => star.classList.remove('limit'), 400);
+                return;
+            }
+            star.classList.toggle('active');
+        });
+    }
+
+    if (isFolder) {
+        card.addEventListener('dblclick', () => setTrashView(true, filename));
+    }
 
     card.addEventListener('click', (e) => {
         if (wasDragging) return;
@@ -199,7 +259,7 @@ document.querySelector('.container').addEventListener('click', (e) => {
 
 // Горячие клавиши
 document.addEventListener('keydown', (e) => {
-    const modals = ['modal-delete', 'modal-add-category', 'modal-delete-category', 'modal-add-stamp', 'modal-delete-forever'];
+    const modals = ['modal-delete', 'modal-add-category', 'modal-delete-category', 'modal-add-stamp', 'modal-delete-forever', 'modal-empty-trash', 'modal-rename-stamp', 'modal-rename-category'];
     const anyOpen = modals.some(id => document.getElementById(id).classList.contains('visible'));
 
     if (e.key === 'Escape') {
@@ -207,6 +267,8 @@ document.addEventListener('keydown', (e) => {
             clearInterval(deleteInterval);
             clearInterval(foreverInterval);
             modals.forEach(closeModal);
+            contextTarget = null;
+            catContextTarget = null;
         } else {
             clearSelection();
         }
@@ -256,15 +318,16 @@ deleteBtn.addEventListener('click', () => {
 
 function confirmDelete() {
     clearInterval(deleteInterval);
+    let favChanged = false;
     grid.querySelectorAll('.stamp-card.active').forEach(c => {
         const filename = c.dataset.filename;
         const category = c.dataset.category;
-        const displayName = c.querySelector('.stamp-name').textContent;
-        const img = c.querySelector('.stamp-preview img');
+        const fidx = favorites.findIndex(f => f.category === category && f.filename === filename);
+        if (fidx >= 0) { favorites.splice(fidx, 1); favChanged = true; }
         window.pywebview.api.delete_stamp(category, filename);
-        trashStore.push({ displayName, imageSrc: img ? img.src : null, filename, category });
         c.remove();
     });
+    if (favChanged) { saveFavorites(); updateFavoritesList(); }
     lastSelected = null;
     updateDeleteBtn();
     closeModal('modal-delete');
@@ -275,9 +338,11 @@ restoreBtn.addEventListener('click', () => {
     grid.querySelectorAll('.stamp-card.active').forEach(c => {
         const filename = c.dataset.filename;
         const category = c.dataset.category;
-        window.pywebview.api.restore_stamp(category, filename);
-        const idx = trashStore.findIndex(i => i.filename === filename && i.category === category);
-        if (idx !== -1) trashStore.splice(idx, 1);
+        if (c.dataset.isFolder === 'true') {
+            window.pywebview.api.restore_category(filename);
+        } else {
+            window.pywebview.api.restore_stamp(category, filename);
+        }
         c.remove();
     });
     lastSelected = null;
@@ -303,9 +368,11 @@ function confirmForever() {
     grid.querySelectorAll('.stamp-card.active').forEach(c => {
         const filename = c.dataset.filename;
         const category = c.dataset.category;
-        window.pywebview.api.delete_stamp_from_trash(category, filename);
-        const idx = trashStore.findIndex(i => i.filename === filename && i.category === category);
-        if (idx !== -1) trashStore.splice(idx, 1);
+        if (c.dataset.isFolder === 'true') {
+            window.pywebview.api.delete_category_from_trash(filename);
+        } else {
+            window.pywebview.api.delete_stamp_from_trash(category, filename);
+        }
         c.remove();
     });
     lastSelected = null;
@@ -317,6 +384,26 @@ document.getElementById('btn-forever-confirm').addEventListener('click', confirm
 document.getElementById('btn-forever-cancel').addEventListener('click', () => {
     clearInterval(foreverInterval);
     closeModal('modal-delete-forever');
+});
+
+document.getElementById('breadcrumb-back').addEventListener('click', () => {
+    setTrashView(true, null);
+});
+
+document.getElementById('btn-empty-trash').addEventListener('click', () => {
+    openModal('modal-empty-trash');
+});
+
+document.getElementById('btn-empty-trash-confirm').addEventListener('click', () => {
+    window.pywebview.api.empty_trash().then(() => {
+        grid.innerHTML = '';
+        updateDeleteBtn();
+    });
+    closeModal('modal-empty-trash');
+});
+
+document.getElementById('btn-empty-trash-cancel').addEventListener('click', () => {
+    closeModal('modal-empty-trash');
 });
 
 document.getElementById('btn-delete-confirm').addEventListener('click', confirmDelete);
@@ -455,12 +542,10 @@ document.getElementById('btn-stamp-confirm').addEventListener('click', () => {
 
     const imgRect  = cropImage.getBoundingClientRect();
     const areaRect = cropArea.getBoundingClientRect();
-    const offX = imgRect.left - areaRect.left;
-    const offY = imgRect.top  - areaRect.top;
     const imgW = cropImage.offsetWidth;
     const imgH = cropImage.offsetHeight;
-    const imgCX = offX + imgW / 2;
-    const imgCY = offY + imgH / 2;
+    const imgCX = (imgRect.left + imgRect.right) / 2 - areaRect.left;
+    const imgCY = (imgRect.top  + imgRect.bottom) / 2 - areaRect.top;
 
     const aW = cropArea.offsetWidth;
     const aH = cropArea.offsetHeight;
@@ -485,8 +570,7 @@ document.getElementById('btn-stamp-confirm').addEventListener('click', () => {
         cropRect.x, cropRect.y, cropRect.w, cropRect.h,
         0, 0, finalCanvas.width, finalCanvas.height
     );
-    const canvas = finalCanvas;
-    const imageData = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+    const imageData = finalCanvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
     window.pywebview.api.add_stamp(category, name, width, height, imageData).then(() => setTrashView(false));
     closeModal('modal-add-stamp');
 });
@@ -549,42 +633,60 @@ document.addEventListener('mouseup', () => {
 
 // ─── Избранное ──────────────────────────────────────────────────────────────
 
+function isFavorite(category, filename) {
+    return favorites.some(f => f.category === category && f.filename === filename);
+}
+
+function saveFavorites() {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+}
+
+function toggleFavorite(category, filename) {
+    const idx = favorites.findIndex(f => f.category === category && f.filename === filename);
+    if (idx >= 0) {
+        favorites.splice(idx, 1);
+        saveFavorites();
+        updateFavoritesList();
+        return true;
+    }
+    if (favorites.length >= 15) return false;
+    favorites.push({ category, filename });
+    saveFavorites();
+    updateFavoritesList();
+    return true;
+}
+
 function updateFavoritesList() {
     favoritesList.innerHTML = '';
-    if (favorites.size === 0) {
+    const validFavs = favorites.filter(fav =>
+        [...categoryList.querySelectorAll('li')].some(l => l.dataset.category === fav.category)
+    );
+    const label = favoritesSection.querySelector('.sidebar-label');
+    if (validFavs.length === 0) {
         favoritesSection.style.display = 'none';
+        label.textContent = 'Избранное';
         return;
     }
     favoritesSection.style.display = 'flex';
-    favorites.forEach(name => {
+    label.textContent = `Избранное (${favorites.length}/15)`;
+    validFavs.forEach(fav => {
         const li = document.createElement('li');
-        li.textContent = name;
+        li.textContent = stampDisplayName(fav.filename);
         li.addEventListener('click', () => {
-            categoryList.querySelectorAll('li').forEach(i => i.classList.remove('active'));
+            const catLi = [...categoryList.querySelectorAll('li')].find(l => l.dataset.category === fav.category);
+            if (!catLi) return;
             trashItem.classList.remove('active');
-            favoritesList.querySelectorAll('li').forEach(i => i.classList.remove('active'));
-            li.classList.add('active');
+            setActiveCategory(catLi);
+            setTrashView(false);
         });
         favoritesList.appendChild(li);
     });
-}
-
-function toggleFavorite(name) {
-    if (favorites.has(name)) {
-        favorites.delete(name);
-    } else {
-        favorites.add(name);
-    }
-    updateFavoritesList();
 }
 
 // ─── Контекстное меню ────────────────────────────────────────────────────────
 
 function showContextMenu(e, card) {
     contextTarget = card;
-    const name = card.querySelector('.stamp-name').textContent;
-    document.getElementById('ctx-favorite').textContent =
-        favorites.has(name) ? 'Убрать из избранного' : 'Добавить в избранное';
     contextMenu.style.left = e.clientX + 'px';
     contextMenu.style.top = e.clientY + 'px';
     contextMenu.classList.add('visible');
@@ -595,10 +697,18 @@ function hideContextMenu() {
     contextTarget = null;
 }
 
-document.getElementById('ctx-favorite').addEventListener('click', () => {
+function hideCategoryContextMenu() {
+    categoryContextMenu.classList.remove('visible');
+    catContextTarget = null;
+}
+
+document.getElementById('ctx-rename').addEventListener('click', () => {
     if (!contextTarget) return;
-    toggleFavorite(contextTarget.querySelector('.stamp-name').textContent);
-    hideContextMenu();
+    document.getElementById('input-rename-stamp').value =
+        contextTarget.querySelector('.stamp-name').textContent;
+    contextMenu.classList.remove('visible'); // скрываем меню, но contextTarget не трогаем
+    openModal('modal-rename-stamp');
+    setTimeout(() => document.getElementById('input-rename-stamp').focus(), 50);
 });
 
 document.getElementById('ctx-delete').addEventListener('click', () => {
@@ -610,14 +720,96 @@ document.getElementById('ctx-delete').addEventListener('click', () => {
     deleteBtn.click();
 });
 
+// ─── Переименование штампа ──────────────────────────────────────────────────
+
+document.getElementById('btn-rename-stamp-confirm').addEventListener('click', () => {
+    const newName = document.getElementById('input-rename-stamp').value.trim();
+    if (!newName || !contextTarget) return;
+    const card = contextTarget;
+    const oldFilename = card.dataset.filename;
+    const category = card.dataset.category;
+    window.pywebview.api.rename_stamp(category, oldFilename, newName)
+        .then(newFilename => {
+            card.dataset.filename = newFilename;
+            card.querySelector('.stamp-name').textContent = newName;
+            const fidx = favorites.findIndex(f => f.category === category && f.filename === oldFilename);
+            if (fidx >= 0) { favorites[fidx].filename = newFilename; saveFavorites(); updateFavoritesList(); }
+        });
+    contextTarget = null;
+    closeModal('modal-rename-stamp');
+});
+
+document.getElementById('btn-rename-stamp-cancel').addEventListener('click', () => {
+    contextTarget = null;
+    closeModal('modal-rename-stamp');
+});
+
+document.getElementById('input-rename-stamp').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-rename-stamp-confirm').click();
+    if (e.key === 'Escape') { contextTarget = null; closeModal('modal-rename-stamp'); }
+});
+
+// ─── Контекстное меню категории ─────────────────────────────────────────────
+
+document.getElementById('cat-ctx-rename').addEventListener('click', () => {
+    if (!catContextTarget) return;
+    document.getElementById('input-rename-category').value = catContextTarget.dataset.category;
+    categoryContextMenu.classList.remove('visible'); // скрываем меню, catContextTarget не трогаем
+    openModal('modal-rename-category');
+    setTimeout(() => document.getElementById('input-rename-category').focus(), 50);
+});
+
+document.getElementById('cat-ctx-delete').addEventListener('click', () => {
+    if (!catContextTarget) return;
+    setActiveCategory(catContextTarget);
+    trashItem.classList.remove('active');
+    document.getElementById('delete-category-name').textContent = catContextTarget.dataset.category;
+    hideCategoryContextMenu();
+    openModal('modal-delete-category');
+});
+
+// ─── Переименование категории ────────────────────────────────────────────────
+
+document.getElementById('btn-rename-category-confirm').addEventListener('click', () => {
+    const newName = document.getElementById('input-rename-category').value.trim();
+    if (!newName || !catContextTarget) return;
+    const li = catContextTarget;
+    const oldName = li.dataset.category;
+    const wasActive = li.classList.contains('active');
+    window.pywebview.api.rename_category(oldName, newName).then(() => {
+        li.dataset.category = newName;
+        li.textContent = newName;
+        if (favorites.some(f => f.category === oldName)) {
+            favorites.forEach(f => { if (f.category === oldName) f.category = newName; });
+            saveFavorites();
+            updateFavoritesList();
+        }
+        if (wasActive) setTrashView(false);
+    });
+    catContextTarget = null;
+    closeModal('modal-rename-category');
+});
+
+document.getElementById('btn-rename-category-cancel').addEventListener('click', () => {
+    catContextTarget = null;
+    closeModal('modal-rename-category');
+});
+
+document.getElementById('input-rename-category').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-rename-category-confirm').click();
+    if (e.key === 'Escape') { catContextTarget = null; closeModal('modal-rename-category'); }
+});
+
 document.addEventListener('click', (e) => {
     if (!e.target.closest('#context-menu')) hideContextMenu();
+    if (!e.target.closest('#category-context-menu')) hideCategoryContextMenu();
 });
 
 document.addEventListener('contextmenu', (e) => {
     const card = e.target.closest('.stamp-card');
     if (card) {
         e.preventDefault();
+        hideCategoryContextMenu();
         showContextMenu(e, card);
     } else {
         hideContextMenu();
@@ -630,5 +822,6 @@ window.addEventListener('pywebviewready', function() {
         categoryList.innerHTML = '';
         categories.forEach(name => addCategoryItem(name));
         if (categories.length > 0) setTrashView(false);
+        updateFavoritesList();
     });
 });
